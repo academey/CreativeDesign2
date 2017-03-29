@@ -1,0 +1,19 @@
+current directory: /home/honeyjam/justtest/vendor/bundle/ruby/2.3.0/gems/byebug-9.0.6/ext/byebug
+/usr/bin/ruby2.3 -r ./siteconf20170316-8761-13ll03g.rb extconf.rb
+creating Makefile
+
+current directory: /home/honeyjam/justtest/vendor/bundle/ruby/2.3.0/gems/byebug-9.0.6/ext/byebug
+make "DESTDIR=" clean
+
+current directory: /home/honeyjam/justtest/vendor/bundle/ruby/2.3.0/gems/byebug-9.0.6/ext/byebug
+make "DESTDIR="
+compiling context.c
+compiling threads.c
+compiling breakpoint.c
+compiling locker.c
+compiling byebug.c
+linking shared-object byebug/byebug.so
+
+current directory: /home/honeyjam/justtest/vendor/bundle/ruby/2.3.0/gems/byebug-9.0.6/ext/byebug
+make "DESTDIR=" install
+/usr/bin/install -c -m 0755 byebug.so ./.gem.20170316-8761-1bkwbqb/byebug

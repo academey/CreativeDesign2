@@ -1,0 +1,33 @@
+current directory: /home/honeyjam/justtest/vendor/bundle/ruby/2.3.0/gems/debugger-1.6.8/ext/ruby_debug
+/usr/bin/ruby2.3 -r ./siteconf20170316-37922-shkjgq.rb extconf.rb
+*** extconf.rb failed ***
+Could not create Makefile due to some reason, probably lack of necessary
+libraries and/or headers.  Check the mkmf.log file for more details.  You may
+need configuration options.
+
+Provided configuration options:
+	--with-opt-dir
+	--without-opt-dir
+	--with-opt-include
+	--without-opt-include=${opt-dir}/include
+	--with-opt-lib
+	--without-opt-lib=${opt-dir}/lib
+	--with-make-prog
+	--without-make-prog
+	--srcdir=.
+	--curdir
+	--ruby=/usr/bin/$(RUBY_BASE_NAME)2.3
+/usr/lib/ruby/2.3.0/fileutils.rb:1392:in `initialize': No such file or directory @ rb_sysopen - ./233/ruby_debug.h (Errno::ENOENT)
+	from /usr/lib/ruby/2.3.0/fileutils.rb:1392:in `open'
+	from /usr/lib/ruby/2.3.0/fileutils.rb:1392:in `copy_file'
+	from /usr/lib/ruby/2.3.0/fileutils.rb:486:in `copy_file'
+	from /usr/lib/ruby/2.3.0/fileutils.rb:403:in `block in cp'
+	from /usr/lib/ruby/2.3.0/fileutils.rb:1571:in `block in fu_each_src_dest'
+	from /usr/lib/ruby/2.3.0/fileutils.rb:1585:in `fu_each_src_dest0'
+	from /usr/lib/ruby/2.3.0/fileutils.rb:1569:in `fu_each_src_dest'
+	from /usr/lib/ruby/2.3.0/fileutils.rb:402:in `cp'
+	from extconf.rb:83:in `block in <main>'
+	from extconf.rb:82:in `each'
+	from extconf.rb:82:in `<main>'
+
+extconf failed, exit code 1
