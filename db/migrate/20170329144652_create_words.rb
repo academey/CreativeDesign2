@@ -6,6 +6,7 @@ class CreateWords < ActiveRecord::Migration
 			t.string	:example
 			t.string	:pos
 			t.integer :target
+      t.integer :priority
 			
       t.timestamps null: false
     end

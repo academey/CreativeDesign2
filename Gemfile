@@ -1,4 +1,8 @@
 source 'https://rubygems.org'
+# for parsing
+gem 'httparty'
+# for pos tagger
+gem 'engtagger'
 
 
 # Bundle edge Rails instead: gem 'rails', github: 'rails/rails'
