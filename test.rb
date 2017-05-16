@@ -19,7 +19,6 @@ class Triple
       when 2
         @three = data
     end
-
   end
 end
 
@@ -83,14 +82,57 @@ class WordAPI
 		@@a_origin = "http://api.datamuse.com/words"
 	end
 
-	def verbConjugation(verb)
-		uri = @@c_origin + '/conjugations' +'/eng/' + verb
+	def verbConjugation(verb, tense)
+		uri = @@c_origin + '/conjugations' +'/eng/' + verb + '?tense=' + tense
+    puts(uri)
 		response = HTTParty.get(uri)
-		JSON.parse(response.body)
+    jsonHash = JSON.parse(response.body)
+    return jsonHash[0]['surfaceform']
+  end
+  def tenseChange(verb, tense)
+    return "" if ['have','has','had',
+             'been','is','are','was','were',
+             'can','will','must','should','may'
+    ].include?(verb)
+    uri = @@c_origin + '/tenses' +'/eng/' + verb
+    puts(uri)
+    response = HTTParty.get(uri)
+    jsonHash = JSON.parse(response.body)
 
-	end
+    case tense
+      when "vb" # base form
+        return "" if not jsonHash.include?("gerund") and not jsonHash.include?("presentparticiple")
+        changeTense = "presentparticiple"
+      when "vbd" # present tense not 3rd
+        return "" if not jsonHash.include?("past")
+        changeTense = "past"
+      when "vbz" # present tense 3rd
+        return "" if not jsonHash.include?("past")
+        changeTense = "past"
+      when "vbg" # gerund (동명사)
+        return "" if not jsonHash.include?("pastparticiple")
+        changeTense = "pastparticiple"
+      when "vbd" # past tense
+        return "" if not jsonHash.include?("pastparticiple")
+        changeTense = "pastparticiple"
+      when "vbn" # past participle
+        return "" if not jsonHash.include?("gerund") and not jsonHash.include?("presentparticiple")
+        changeTense = "presentparticiple"
+      else
+        return ""
+    end
+    changeVerb = verbConjugation(verb, changeTense)
+    if changeVerb == verb
+      return ""
+    else
+      return changeVerb
+    end
+  end
 	def advToAdj(adv)
 		uri = @@c_origin + '/stems' +'/eng/' + adv
+    if ['not','many','very','so','thus'].include? adv
+      return ""
+    end
     puts(uri)
 		response = HTTParty.get(uri)
 		jsonHash = JSON.parse(response.body)
@@ -111,12 +153,18 @@ class WordAPI
 		uri = @@a_origin + '?rel_ant=' + adj
 		response = HTTParty.get(uri)
 		jsonHash = JSON.parse(response.body)
-		if jsonHash.size != 0
-			return jsonHash[0]["word"]
-		else
-			return ""
-		end
-	end
+    jsonHash.each do |hash|
+      antExceptArr = Array.new
+      antExceptArr << "un" + adj
+      antExceptArr << "im" + adj
+      antExceptArr << "not " + adj
+      if !antExceptArr.include? hash["word"]
+        return hash["word"]
+      end
+    end
+    return ""
+  end
+
 end
 
 class ProblemMaker
@@ -154,19 +202,17 @@ class ProblemMaker
 			@tagged2DArray[lineIndex] << wNode
 
 			# storing tag num.
+      if ["vb", "vbd", "vbz", "vbg", "vbd", "vbn"].include?(tag)
+        verbTag = 'verb'
+        if @tagCountList[verbTag] == nil
+          @tagCountList[verbTag] = Array.new
+        end
+        @tagCountList[verbTag] << wNode
+      end
 			if @tagCountList[tag] == nil
 				@tagCountList[tag] = Array.new
-			end
+      end
       @tagCountList[tag] << wNode
-
-			#if @tagCountList[tag]['count'] == nil
-			#	@tagCountList[tag]['count'] = 1
-			#	@tagCountList[tag]['words'] = Array.new
-			#	@tagCountList[tag]['words'] << wNode
-			#else
-			#	@tagCountList[tag]['count'] = @tagCountList[tag]['count'] + 1
-			#	@tagCountList[tag]['words'] << wNode
-			#end
 
 			wordIndex = wordIndex + 1
 
@@ -185,11 +231,15 @@ class ProblemMaker
     end
     @caseList = {
         "adv_to_adj" => Array.new,
-        "ant_adj" => Array.new
+        "ant_adj" => Array.new,
+        "tense_change" => Array.new,
+        "conjunction" => Array.new
     }
 
     @tagged2DArray.each do |line|
       line.each do |word|
+        next if 'not' == word.wd.to_s
+
         case word.tag
 					when "rb"
 						candWord = @@word_api.advToAdj(word.wd.to_s)
@@ -208,7 +258,14 @@ class ProblemMaker
 							newCand = Candidate.new(candWord.to_s, word.li.to_i, word.wi.to_i)
 							@caseList["ant_adj"] << newCand
 						end
-					else
+          when "vb", "vbd", "vbz", "vbg", "vbd", "vbn"
+            candWord = @@word_api.tenseChange(word.wd.to_s, word.tag)
+            if candWord != ""
+              puts word.wd.to_s + "to" + candWord
+              newCand = Candidate.new(candWord.to_s, word.li.to_i, word.wi.to_i)
+              @caseList["tense_change"] << newCand
+            end
+
         end
 			end
     end
@@ -221,12 +278,23 @@ class ProblemMaker
 	
 	def makeProblem
     @problemList = {
+        "grammar" => Array.new,
+        "context" => Array.new,
         "adv_to_adj" => Array.new,
-        "ant_adj" => Array.new
+        "ant_adj" => Array.new,
+        "tense_change" => Array.new
     }
+    ## Grammar error problem with adv_to_adj & tense change & ant_adj
+    ## verb and adjective will be candidates.
+    ##
 
-    @caseList["adv_to_adj"].each do |candidate|
-      if @tagCountList['jj'].size > 5
+    if @tagCountList['jj'].size < 3 or @tagCountList['verb'].size < 3
+      print "Can't make graamar prblem. there was not enough candidates."
+    else
+      @caseList["adv_to_adj"].each do |candidate|
+        adjCandNum = 2 + Random.rand(1)
+        verbCandNum = 4 - adjCandNum
+
         problem = String.new
         correctArr = Array.new
         li = candidate.li
@@ -234,11 +302,15 @@ class ProblemMaker
         candWord = @tagged2DArray[li][wi]
         correctArr << candWord
 
-        randArr = rand_n(4, @tagCountList['jj'].size)
-        randArr.each do |randIndex|
+        adjRandArr = rand_n(adjCandNum, @tagCountList['jj'].size)
+        verbRandArr = rand_n(verbCandNum, @tagCountList['verb'].size)
+        adjRandArr.each do |randIndex|
           correctArr << @tagCountList['jj'][randIndex]
         end
-        randArr.shuffle
+        verbRandArr.each do |randIndex|
+          correctArr << @tagCountList['verb'][randIndex]
+        end
+
 
         candNum = 1
         correctNum = -1
@@ -260,10 +332,53 @@ class ProblemMaker
           end
         end
         problem = problem + "\ncorrect Number" + correctNum.to_s + " ,Answer is " + candWord.wd
-        @problemList["adv_to_adj"] << problem
+        @problemList["grammar"] << problem
+      end
+      @caseList["tense_change"].each do |candidate|
+        adjCandNum = 2 + Random.rand(1)
+        verbCandNum = 4 - adjCandNum
+
+        problem = String.new
+        correctArr = Array.new
+        li = candidate.li
+        wi = candidate.wi
+        candWord = @tagged2DArray[li][wi]
+        correctArr << candWord
+
+        adjRandArr = rand_n(adjCandNum, @tagCountList['jj'].size)
+        verbRandArr = rand_n(verbCandNum, @tagCountList['verb'].size)
+        adjRandArr.each do |randIndex|
+          correctArr << @tagCountList['jj'][randIndex]
+        end
+        verbRandArr.each do |randIndex|
+          correctArr << @tagCountList['verb'][randIndex]
+        end
+
+        candNum = 1
+        correctNum = -1
+        @tagged2DArray.each do |line|
+          line.each do |word|
+            if correctArr.include?(word)
+              if word == candWord
+                problem = problem + "[" + candNum.to_s + "]" + candidate.cd
+                correctArr.delete(word)
+                correctNum = candNum
+              else
+                problem = problem + "[" + candNum.to_s + "]" + word.wd
+                correctArr.delete(word)
+              end
+              candNum = candNum + 1
+            else
+              problem = problem + ' ' + word.wd
+            end
+          end
+        end
+        problem = problem + "\ncorrect Number" + correctNum.to_s + " ,Answer is " + candWord.wd
+        @problemList["grammar"] << problem
       end
     end
     # making antAdj Problem. It's size have to larger than 3
+
     if @caseList["ant_adj"].size >= 3
       # making combinations
       candCombList = @caseList["ant_adj"].combination(3).to_a
@@ -288,9 +403,6 @@ class ProblemMaker
         correctTriple.two = correctArr[1].wd
         correctTriple.three = correctArr[2].wd
         tripleArr << correctTriple
-
-
-
 
         candNum = 0
         candCharArr =[ 'A', 'B', 'C']
@@ -366,14 +478,15 @@ class ProblemMaker
   end
 end
 # Sample text
-testtText = %q[Mathematics will attract those it can attract, but it will do nothing to overcome the resistance to science. Science is universal in principle but in practice it speaks to very few. Mathematics may be considered a communication skill of the highest type, frictionless so to speak; and at the opposite pole from mathematics, the fruits of science show the practical benefits of science without the use of words. But as we have seen, those fruits are ambivalent. Science as science does not speak; ideally, all scientific concepts are mathematized when scientists communicate with on e another, and when science displays its products to non-scientists it need not, and indeed is not able to, resort to salesmanship. When science speaks to others it is no longer science, and the scientist becomes or has to hire a publicist who dilutes the exactness of mathematics. In doing so the scientist reverses his drive toward mathematical exactness in favor of rhetorical vagueness and metaphor, thus violating the code of intellectual conduct that defines him as a scientist.]
-=begin
+testText = %q[Mathematics will attract those it can attract, but it will do nothing to overcome the resistance to science. Science is universal in principle but in practice it speaks to very few. Mathematics may be considered a communication skill of the highest type, frictionless so to speak; and at the opposite pole from mathematics, the fruits of science show the practical benefits of science without the use of words. But as we have seen, those fruits are ambivalent. Science as science does not speak; ideally, all scientific concepts are mathematized when scientists communicate with on e another, and when science displays its products to non-scientists it need not, and indeed is not able to, resort to salesmanship. When science speaks to others it is no longer science, and the scientist becomes or has to hire a publicist who dilutes the exactness of mathematics. In doing so the scientist reverses his drive toward mathematical exactness in favor of rhetorical vagueness and metaphor, thus violating the code of intellectual conduct that defines him as a scientist.]
+
 pbr = ProblemMaker.new
 pbr.input(testText)
 pbr.caseParsing
 pbr.makeProblem
-=end
+pbr.printProblem('grammar')
 
+=begin
 pbr = ProblemMaker.new
 begin
   puts "What do you want to do? Choose your method"
@@ -402,15 +515,9 @@ begin
   end
 end while input != "X"
 puts "bye bye "
-
-text = "Alice chased the big fat cat."
-test = %q[ "'"""''''sd'''ruby test ]
-text = %q[what are you talking about? I see what you]
-
+=end
 tgr = EngTagger.new
 # Add part-of-speech tags to text
-tagged = tgr.add_tags(text)
-print(tagged)
 #=> "<nnp>Alice</nnp> <vbd>chased</vbd> <det>the</det> <jj>big</jj> <jj>fat</jj><nn>cat</nn> <pp>.</pp>"
 
 # Get a list of all nouns and noun phrases with occurrence counts
