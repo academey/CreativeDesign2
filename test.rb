@@ -34,23 +34,12 @@ end
 
 # Create a parser object
 class WordNode
-	def initialize(tg,wd,li,wi)
-		@tag = tg
-		@word = wd
-		@line = li
-		@wordIndex = wi
-	end
-	def tag
-		@tag
-	end
-	def wd
-		@word
-	end
-	def li
-		@line
-	end
-	def wi
-		@wordIndex
+  attr_accessor :tag, :wd, :li,:wi
+	def initialize(tag,wd,li,wi)
+		@tag = tag
+		@wd = wd
+		@li = li
+		@wi = wi
 	end
 end
 
@@ -185,6 +174,8 @@ class ProblemMaker
 		# convert one dimension info to two dimension. 
 		@tagged2DArray = Array.new
 		@tagCountList = Hash.new
+    lineArray = Array.new
+
 		lineIndex = 0
 		wordIndex = 0
 		taggedArray.each do |word|
@@ -201,27 +192,78 @@ class ProblemMaker
       end
 			@tagged2DArray[lineIndex] << wNode
 
-			# storing tag num.
-      if ["vb", "vbd", "vbz", "vbg", "vbd", "vbn"].include?(tag)
-        verbTag = 'verb'
-        if @tagCountList[verbTag] == nil
-          @tagCountList[verbTag] = Array.new
-        end
-        @tagCountList[verbTag] << wNode
-      end
-			if @tagCountList[tag] == nil
-				@tagCountList[tag] = Array.new
-      end
-      @tagCountList[tag] << wNode
-
 			wordIndex = wordIndex + 1
+      if lineArray[lineIndex] == nil
+        lineArray << wd.downcase
+      else
+        lineArray[lineIndex] = lineArray[lineIndex] + " " + wd.downcase
+      end
 
 			if wd.index('.') != nil || wd.index('?') != nil || wd.index('!') != nil
 				lineIndex = lineIndex + 1
         wordIndex = 0
 			end
+    end
 
-		end
+    # change outward tag to real meaning tag.
+    lineIndex = 0
+    wordIndex = 0
+    @tagged2DArray.each do |line|
+      conjIndex = nil
+      conjLength = -1
+      ['in other words','for example','in addition', 'in fact', 'on the contray', 'after all', 'as if', 'as soon as'].each do |conjunction|
+        conjIndex = lineArray[lineIndex].index(conjunction)
+        if conjIndex != nil
+          conjLength = conjunction.length
+          break
+        end
+      end
+
+      strIndex = 0
+      line.each do |word|
+        wd = word.wd
+        if strIndex == conjIndex
+          @tagged2DArray[lineIndex][wordIndex].tag = 'cc'
+          strIndex = strIndex + @tagged2DArray[lineIndex][wordIndex].wd.length
+          loop do
+            break if @tagged2DArray[lineIndex][wordIndex + 1] == nil
+            strIndex = strIndex + @tagged2DArray[lineIndex][wordIndex + 1].wd.length + 1
+            @tagged2DArray[lineIndex][wordIndex].wd = @tagged2DArray[lineIndex][wordIndex].wd + " " + @tagged2DArray[lineIndex][wordIndex + 1].wd
+            @tagged2DArray[lineIndex].delete_at(wordIndex + 1)
+            break if strIndex >= conjIndex + conjLength
+          end
+          break
+        else
+          strIndex = strIndex + wd.length
+          wordIndex = wordIndex + 1
+        end
+      end
+      lineIndex = lineIndex + 1
+    end
+
+    # storing tag num.
+    @tagged2DArray.each do |line|
+      line.each do |word|
+        wd = word.wd.to_s.downcase
+        tag = word.tag
+        if ['not', 'last', 'first', 'free'] == wd
+          wd = wd + 'what the fuck'
+          next
+        end
+
+        if ["vb", "vbd", "vbz", "vbg", "vbd", "vbn"].include?(tag)
+          verbTag = 'verb'
+          if @tagCountList[verbTag] == nil
+            @tagCountList[verbTag] = Array.new
+          end
+          @tagCountList[verbTag] << word
+        end
+        if @tagCountList[tag] == nil
+          @tagCountList[tag] = Array.new
+        end
+        @tagCountList[tag] << word
+      end
+    end
 	end
 		# by using each tag Count, suggest the problem making case.
 	def caseParsing
@@ -233,6 +275,7 @@ class ProblemMaker
         "adv_to_adj" => Array.new,
         "ant_adj" => Array.new,
         "tense_change" => Array.new,
+        "relative_pronoun" => Array.new,
         "conjunction" => Array.new
     }
 
@@ -250,7 +293,8 @@ class ProblemMaker
 						end
 					when "jjr"
 						# change to little, more, like that.
-					when "jj"
+          when "jj"
+            next if ['last','first','free'].include?(word.wd.to_s.downcase)
 						candWord = @@word_api.antAdj(word.wd.to_s)
 
 						if candWord != ""
@@ -265,13 +309,56 @@ class ProblemMaker
               newCand = Candidate.new(candWord.to_s, word.li.to_i, word.wi.to_i)
               @caseList["tense_change"] << newCand
             end
+          when "wdt", "wp", "wps", "wrb"
+            ##WDT	WH-determiner	          that what which
+            ##WP	  WH-pronoun	            who whom
+            ##WP$	WH-pronoun, possessive	whose
+            ##WRB	Wh-adverb	              how however whenever where
+            case word.wd.to_s
+              when "that"
+                candWord = "what"
+              when "what"
+                candWord = "that"
+              when "where"
+                candWord = "which"
+              when "whose"
+                candWord = "who"
+              when "which"
+                candWord = "where"
+              else next
 
+            end
+            puts word.wd.to_s + "to" + candWord
+            newCand = Candidate.new(candWord.to_s, word.li.to_i, word.wi.to_i)
+            @caseList["relative_pronoun"] << newCand
+          when "cc"
+            # 'in other words','for example','in addition', 'in fact', 'on the contray', 'after all', 'as if', 'as soon as'
+            #CC	conjunction, coordinating	and but or yet
+            print "CC!" + word.wd.to_s
+            case word.wd.to_s.downcase
+              when "and"
+                candWord = "or"
+              when "but"
+                candWord = "that"
+              when "or"
+                candWord = "which"
+              when "whose"
+                candWord = "who"
+              when "which"
+                candWord = "where"
+              when "in other words"
+                candWord = "just test"
+              else next
+            end
+            puts word.wd.to_s + "to" + candWord
+            newCand = Candidate.new(candWord.to_s, word.li.to_i, word.wi.to_i)
+            @caseList["conjunction"] << newCand
         end
 			end
     end
 
     @caseList.each do |key, value|
-      puts key + " Case has " + value.size.to_s + "candidates."
+      puts key + " Case has " + value.size.to_s + " candidates."
     end
 
 	end
@@ -318,11 +405,11 @@ class ProblemMaker
           line.each do |word|
             if correctArr.include?(word)
               if word == candWord
-                problem = problem + "[" + candNum.to_s + "]" + candidate.cd
+                problem = problem + " [" + candNum.to_s + "] " + candidate.cd
                 correctArr.delete(word)
                 correctNum = candNum
               else
-                problem = problem + "[" + candNum.to_s + "]" + word.wd
+                problem = problem + " [" + candNum.to_s + "] " + word.wd
                 correctArr.delete(word)
               end
               candNum = candNum + 1
@@ -384,12 +471,9 @@ class ProblemMaker
       candCombList = @caseList["ant_adj"].combination(3).to_a
       candCombList.each do |candList|
         problem = String.new
-
         candArr = Array.new
         correctArr = Array.new
-
         tripleArr = Array.new
-
 
         candList.each do |candidate|
           li = candidate.li
@@ -479,7 +563,8 @@ class ProblemMaker
 end
 # Sample text
 testText = %q[Mathematics will attract those it can attract, but it will do nothing to overcome the resistance to science. Science is universal in principle but in practice it speaks to very few. Mathematics may be considered a communication skill of the highest type, frictionless so to speak; and at the opposite pole from mathematics, the fruits of science show the practical benefits of science without the use of words. But as we have seen, those fruits are ambivalent. Science as science does not speak; ideally, all scientific concepts are mathematized when scientists communicate with on e another, and when science displays its products to non-scientists it need not, and indeed is not able to, resort to salesmanship. When science speaks to others it is no longer science, and the scientist becomes or has to hire a publicist who dilutes the exactness of mathematics. In doing so the scientist reverses his drive toward mathematical exactness in favor of rhetorical vagueness and metaphor, thus violating the code of intellectual conduct that defines him as a scientist.]
-
+testText = %q[I hope you remember our discussion last Monday about the servicing of the washing machine supplied to us three months ago. I regret to say the machine is no longer working. As we agreed during the meeting, please send a service engineer as soon as possible to repair it. The product warranty says that you provide spare parts and materials for free, but charge for the engineer’s labor. This sounds unfair. I believe the machine’s failure is caused by a manufacturing defect. Initially, it made a lot of noise, and later, it stopped operating entirely. As it is wholly the company’s responsibility to correct the defect, I hope you will not make us pay for the labor component of its repair.]
+#testText = "In other words, there are so many things."
 pbr = ProblemMaker.new
 pbr.input(testText)
 pbr.caseParsing
